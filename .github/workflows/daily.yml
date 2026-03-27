@@ -1,0 +1,22 @@
+name: Daily Claude Bot
+on:
+  workflow_dispatch: # 직접 실행 버튼 활성화
+  schedule:
+    - cron: '0 0 * * *' # 매일 아침 9시 (한국시간 기준)
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: pip install anthropic requests
+      - name: Run bot
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
