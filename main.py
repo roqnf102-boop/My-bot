@@ -55,11 +55,11 @@ def post_to_blogger(title, content):
     except:
         return 500
 
-# 2. 클로드에게 블로그 글 요청 (모델명 수정: claude-3-5-sonnet-latest)
+# 2. 클로드에게 블로그 글 요청 (정식 명칭: claude-3-5-sonnet-20241022)
 try:
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
     message = client.messages.create(
-        model="claude-3-5-sonnet-latest",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=3000,
         messages=[{
             "role": "user", 
@@ -101,4 +101,4 @@ if status == 200:
         msg += "\n(사진 생성은 실패했습니다)"
     send_telegram(msg)
 else:
-    send_telegram(f"❌ 블로그 업로드 실패 (코드: {status})")
+    send_telegram(f"❌ 블로그 업로드 실패 (코드: {status})\n블로그 ID나 API 권한을 확인하세요.")
