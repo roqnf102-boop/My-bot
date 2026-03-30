@@ -9,41 +9,39 @@ BLOGGER_ID = os.environ.get('BLOGGER_ID', '').strip()
 
 def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.get(url, params={'chat_id': TELEGRAM_ID, 'text': text})
+    try:
+        requests.get(url, params={'chat_id': TELEGRAM_ID, 'text': text})
+    except:
+        pass
 
 try:
-    # 2. 클로드 글쓰기 (모델명: 사장님 계정용 최신 모델)
+    # 2. 클로드 글쓰기 (모델명을 가장 확실한 최신형으로 변경)
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
     message = client.messages.create(
-        model="claude-3-5-sonnet-20240620", 
+        model="claude-3-7-sonnet-latest",  # 404 에러 방지용 최신 모델명
         max_tokens=1500,
-        messages=[{"role": "user", "content": "Write a 3-paragraph blog post about Busan's lifestyle in English. Use HTML tags."}]
+        messages=[{"role": "user", "content": "Write a 3-paragraph blog post about Busan travel in English. Use HTML tags like <h2> and <p>."}]
     )
     content = message.content[0].text
     
-    # 3. 구글 블로그 전송 (구글 공식 문서 권장 방식)
-    # 주소창에 직접 키를 박아 신분 증명을 확실히 합니다.
-    url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOGGER_ID}/posts?key={BLOGGER_KEY}"
+    # 3. 구글 블로그 전송 (URL 파라미터 방식)
+    post_url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOGGER_ID}/posts?key={BLOGGER_KEY}"
     
-    # 구글이 가장 좋아하는 표준 JSON 형식
-    payload = json.dumps({
+    payload = {
         "kind": "blogger#post",
-        "title": "Living the Busan Life: A Salaryman's Perspective",
+        "title": "A Perfect Day in Busan",
         "content": content
-    })
-    
-    headers = {'Content-Type': 'application/json'}
+    }
     
     # 전송!
-    response = requests.post(url, data=payload, headers=headers)
+    response = requests.post(post_url, json=payload)
     
     if response.status_code == 200:
-        send_telegram("✅ [성공] 사장님!!! 드디어 뚫렸습니다! 9시간 고생 끝!")
+        send_telegram("✅ [기적] 사장님!!! 드디어 블로그 글쓰기 성공했습니다! 9시간 고생 끝!")
     else:
-        # 실패 시 구글의 '진짜 속마음'을 텔레그램으로 보냅니다.
-        # 여기서 나오는 메시지가 범인을 잡는 마지막 단서입니다.
-        error_info = response.json().get('error', {}).get('message', response.text)
-        send_telegram(f"❌ 구글 응답 ({response.status_code}): {error_info}")
+        # 실패 시 구글의 진짜 이유를 봅니다.
+        error_msg = response.json().get('error', {}).get('message', response.text)
+        send_telegram(f"❌ 구글 응답 ({response.status_code}): {error_msg}")
 
 except Exception as e:
     send_telegram(f"❌ 시스템 오류: {str(e)}")
