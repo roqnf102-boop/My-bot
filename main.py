@@ -1,30 +1,33 @@
 import os, requests, json
 
-# 1. 깃허브 Secrets에서 정보 가져오기
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
-TELEGRAM_ID = os.environ.get('TELEGRAM_CHAT_ID', '').strip()
+# 1. 깃허브 금고 데이터
 BLOG_KEY = os.environ.get('BLOGGER_API_KEY', '').strip()
 BLOG_ID = os.environ.get('BLOGGER_ID', '').strip()
+TELE_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+TELE_ID = os.environ.get('TELEGRAM_CHAT_ID', '').strip()
 
-def send_telegram(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.get(url, params={'chat_id': TELEGRAM_ID, 'text': text})
+def send(msg):
+    requests.get(f"https://api.telegram.org/bot{TELE_TOKEN}/sendMessage", params={'chat_id': TELE_ID, 'text': msg})
 
 try:
-    # 2. 클로드 없이 바로 테스트 글 작성
-    content = "<h1>API Test Success</h1><p>이 메시지가 보이면 구글 블로그 연결은 성공한 겁니다!</p>"
+    # 2. 구글이 요구하는 정석 주소 (키를 주소에 포함)
+    url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOG_ID}/posts?key={BLOG_KEY}"
     
-    # 3. 구글 블로그 업로드
-    post_url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOG_ID}/posts?key={BLOG_KEY}"
-    payload = {"kind": "blogger#post", "title": "Connection Test", "content": content}
+    # 3. 테스트 데이터
+    data = {
+        "kind": "blogger#post",
+        "title": "Final Success Test",
+        "content": "이 글이 보이면 9시간의 사투는 끝입니다!"
+    }
     
-    response = requests.post(post_url, json=payload)
+    res = requests.post(url, json=data)
     
-    if response.status_code == 200:
-        send_telegram("✅ [성공] 사장님! 구글 연결은 완벽합니다! 이제 클로드 키만 새로 바꾸시면 됩니다.")
+    if res.status_code == 200:
+        send("✅ [기적] 드디어 블로그에 글이 올라갔습니다! 사장님 축하드려요!")
     else:
-        err = response.json().get('error', {}).get('message', response.text)
-        send_telegram(f"❌ 구글 연결 실패 ({response.status_code}): {err}")
+        # 실패 시 이유를 아주 상세하게 봅니다.
+        err_msg = res.json().get('error', {}).get('message', res.text)
+        send(f"❌ 여전한 권한 에러: {err_msg}\n(계정 일치 여부를 꼭 확인하세요!)")
 
 except Exception as e:
-    send_telegram(f"❌ 시스템 오류: {str(e)}")
+    send(f"❌ 시스템 오류: {str(e)}")
