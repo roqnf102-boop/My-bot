@@ -42,7 +42,9 @@ def get_news_items(max_items=2):
     return items
 
 def generate_english_post(news_item):
-    client = anthropic.Anthropic(api_key=os.environ.get('CLAUDE_API_KEY'))
+    api_key = os.environ.get('CLAUDE_API_KEY')
+    print(f"API KEY 앞 10자리: {api_key[:10] if api_key else 'None'}")
+    client = anthropic.Anthropic(api_key=api_key)
     
     prompt = f"""You are a blogger writing for an English-speaking audience interested in Korean culture.
 
