@@ -42,10 +42,9 @@ def get_news_items(max_items=2):
     return items
 
 def get_unsplash_image(keyword):
-    """Unsplash에서 관련 이미지 가져오기"""
     try:
         access_key = os.environ.get('UNSPLASH_ACCESS_KEY')
-        url = f"https://api.unsplash.com/search/photos"
+        url = "https://api.unsplash.com/search/photos"
         params = {
             "query": keyword,
             "per_page": 1,
@@ -54,7 +53,8 @@ def get_unsplash_image(keyword):
         headers = {"Authorization": f"Client-ID {access_key}"}
         response = requests.get(url, params=params, headers=headers)
         data = response.json()
-        if data["results"]:
+        print(f"Unsplash 응답: {data}")
+        if "results" in data and len(data["results"]) > 0:
             photo = data["results"][0]
             image_url = photo["urls"]["regular"]
             photographer = photo["user"]["name"]
@@ -120,7 +120,6 @@ def post_to_blogger(title, content, image_url=None, photographer=None, photo_lin
     
     service = build('blogger', 'v3', credentials=creds)
     
-    # 이미지 HTML 추가
     image_html = ""
     if image_url:
         image_html = f'''
