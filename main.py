@@ -1,53 +1,139 @@
 import os
 import requests
+import feedparser
+import anthropic
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
+# 네이버 뉴스 RSS 피드 (카테고리별)
+RSS_FEEDS = [
+    "https://feeds.feedburner.com/naverpost/food",  # 음식
+    "https://rss.naver.com/main/rss/v3/culture.xml",  # 문화
+    "https://rss.naver.com/main/rss/v3/health.xml",  # 건강
+    "https://rss.naver.com/main/rss/v3/travel.xml",  # 여행
+]
+
 def send_telegram(message):
     token = os.environ.get('TELEGRAM_BOT_TOKEN')
     chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+    if not token or not chat_id:
+        return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-    requests.post(url, json=payload)
+    requests.post(url, json={"chat_id": chat_id, "text": message})
 
-def post_to_blogger():
-    CLIENT_ID = os.environ.get('BLOGGER_CLIENT_ID')
-    CLIENT_SECRET = os.environ.get('BLOGGER_CLIENT_SECRET')
-    REFRESH_TOKEN = os.environ.get('BLOGGER_REFRESH_TOKEN')
-    BLOG_ID = os.environ.get('BLOG_ID')
+def get_news_items(max_items=2):
+    """RSS에서 뉴스 가져오기"""
+    items = []
+    for feed_url in RSS_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:1]:  # 피드당 1개
+                items.append({
+                    "title": entry.get("title", ""),
+                    "summary": entry.get("summary", entry.get("description", "")),
+                    "link": entry.get("link", "")
+                })
+                if len(items) >= max_items:
+                    return items
+        except Exception as e:
+            print(f"RSS 에러: {e}")
+            continue
+    return items
 
-    creds = Credentials(
-        None,
-        refresh_token=REFRESH_TOKEN,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
+def generate_english_post(news_item):
+    """Claude API로 영어 포스팅 생성"""
+    client = anthropic.Anthropic(api_key=os.environ.get('CLAUDE_API_KEY'))
+    
+    prompt = f"""You are a blogger writing for an English-speaking audience interested in Korean culture.
+
+Based on this Korean news:
+Title: {news_item['title']}
+Summary: {news_item['summary']}
+
+Write an engaging English blog post that:
+- Has an attractive title for English readers
+- Is 300-400 words
+- Explains Korean context for Western readers
+- Is friendly and informative
+- Ends with why this matters to international readers
+
+Format your response as:
+TITLE: [your title here]
+CONTENT: [your blog post content here]
+"""
+    
+    message = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}]
     )
+    
+    response = message.content[0].text
+    
+    # 제목과 내용 파싱
+    title = news_item['title']
+    content = response
+    
+    if "TITLE:" in response and "CONTENT:" in response:
+        parts = response.split("CONTENT:")
+        title = parts[0].replace("TITLE:", "").strip()
+        content = parts[1].strip()
+    
+    return title, content
 
-    try:
-        if not creds.valid:
-            creds.refresh(Request())
-            
-        service = build('blogger', 'v3', credentials=creds)
+def post_to_blogger(title, content):
+    """블로거에 포스팅"""
+    creds = Credentials(
+        token=None,
+        refresh_token=os.environ.get('BLOGGER_REFRESH_TOKEN'),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ.get('BLOGGER_CLIENT_ID'),
+        client_secret=os.environ.get('BLOGGER_CLIENT_SECRET'),
+        scopes=["https://www.googleapis.com/auth/blogger"],
+    )
+    creds.refresh(Request())
+    
+    service = build('blogger', 'v3', credentials=creds)
+    
+    body = {
+        "title": title,
+        "content": f"<p>{content.replace(chr(10), '</p><p>')}</p>"
+    }
+    
+    result = service.posts().insert(
+        blogId=os.environ.get('BLOG_ID'),
+        body=body
+    ).execute()
+    
+    return result.get('url')
 
-        body = {
-            "kind": "blogger#post",
-            "title": "드디어 성공! 자동 포스팅과 텔레그램 알림",
-            "content": "9시간 사투 끝에 블로그 글쓰기와 텔레그램 알림이 모두 성공했습니다!"
-        }
-
-        posts = service.posts()
-        result = posts.insert(blogId=BLOG_ID, body=body).execute()
-        
-        msg = f"✅ 블로그 포스팅 성공!\n주소: {result.get('url')}"
+def main():
+    print("뉴스 수집 시작...")
+    news_items = get_news_items(max_items=2)
+    
+    if not news_items:
+        msg = "⚠️ 뉴스를 가져오지 못했습니다."
         print(msg)
-        send_telegram(msg) # 텔레그램으로 전송!
-        
-    except Exception as e:
-        error_msg = f"❌ 에러 발생: {e}"
-        print(error_msg)
-        send_telegram(error_msg) # 에러나도 텔레그램으로 알림!
+        send_telegram(msg)
+        return
+    
+    success_count = 0
+    for i, item in enumerate(news_items):
+        try:
+            print(f"포스팅 {i+1} 생성 중: {item['title']}")
+            title, content = generate_english_post(item)
+            url = post_to_blogger(title, content)
+            msg = f"✅ 포스팅 {i+1} 성공!\n제목: {title}\n주소: {url}"
+            print(msg)
+            send_telegram(msg)
+            success_count += 1
+        except Exception as e:
+            msg = f"❌ 포스팅 {i+1} 실패: {e}"
+            print(msg)
+            send_telegram(msg)
+    
+    send_telegram(f"🎉 오늘 자동 포스팅 완료! {success_count}/{len(news_items)}개 성공")
 
 if __name__ == "__main__":
-    post_to_blogger()
+    main()
