@@ -2,6 +2,8 @@ name: Auto Blog Post
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
   build:
@@ -27,4 +29,5 @@ jobs:
           BLOG_ID: ${{ secrets.BLOG_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
         run: python main.py
