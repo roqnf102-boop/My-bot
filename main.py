@@ -41,9 +41,31 @@ def get_news_items(max_items=2):
             continue
     return items
 
+def get_unsplash_image(keyword):
+    """Unsplash에서 관련 이미지 가져오기"""
+    try:
+        access_key = os.environ.get('UNSPLASH_ACCESS_KEY')
+        url = f"https://api.unsplash.com/search/photos"
+        params = {
+            "query": keyword,
+            "per_page": 1,
+            "orientation": "landscape"
+        }
+        headers = {"Authorization": f"Client-ID {access_key}"}
+        response = requests.get(url, params=params, headers=headers)
+        data = response.json()
+        if data["results"]:
+            photo = data["results"][0]
+            image_url = photo["urls"]["regular"]
+            photographer = photo["user"]["name"]
+            photo_link = photo["links"]["html"]
+            return image_url, photographer, photo_link
+    except Exception as e:
+        print(f"Unsplash 에러: {e}")
+    return None, None, None
+
 def generate_english_post(news_item):
     api_key = os.environ.get('CLAUDE_API_KEY')
-    print(f"API KEY 앞 10자리: {api_key[:10] if api_key else 'None'}")
     client = anthropic.Anthropic(api_key=api_key)
     
     prompt = f"""You are a blogger writing for an English-speaking audience interested in Korean culture.
@@ -62,6 +84,7 @@ Write an engaging English blog post that:
 Format your response as:
 TITLE: [your title here]
 CONTENT: [your blog post content here]
+KEYWORD: [one English keyword for finding a relevant photo, e.g. "korean food" or "kpop" or "korea travel"]
 """
     
     message = client.messages.create(
@@ -73,15 +96,18 @@ CONTENT: [your blog post content here]
     response = message.content[0].text
     title = news_item['title']
     content = response
+    keyword = "korea"
     
-    if "TITLE:" in response and "CONTENT:" in response:
-        parts = response.split("CONTENT:")
-        title = parts[0].replace("TITLE:", "").strip()
-        content = parts[1].strip()
+    if "TITLE:" in response:
+        title = response.split("TITLE:")[1].split("\n")[0].strip()
+    if "CONTENT:" in response:
+        content = response.split("CONTENT:")[1].split("KEYWORD:")[0].strip()
+    if "KEYWORD:" in response:
+        keyword = response.split("KEYWORD:")[1].strip().split("\n")[0].strip()
     
-    return title, content
+    return title, content, keyword
 
-def post_to_blogger(title, content):
+def post_to_blogger(title, content, image_url=None, photographer=None, photo_link=None):
     creds = Credentials(
         token=None,
         refresh_token=os.environ.get('BLOGGER_REFRESH_TOKEN'),
@@ -94,9 +120,21 @@ def post_to_blogger(title, content):
     
     service = build('blogger', 'v3', credentials=creds)
     
+    # 이미지 HTML 추가
+    image_html = ""
+    if image_url:
+        image_html = f'''
+<div style="text-align:center; margin-bottom:20px;">
+    <img src="{image_url}" style="max-width:100%; border-radius:8px;" />
+    <p style="font-size:12px; color:#888;">Photo by <a href="{photo_link}" target="_blank">{photographer}</a> on <a href="https://unsplash.com" target="_blank">Unsplash</a></p>
+</div>
+'''
+    
+    full_content = image_html + f"<p>{content.replace(chr(10), '</p><p>')}</p>"
+    
     body = {
         "title": title,
-        "content": f"<p>{content.replace(chr(10), '</p><p>')}</p>"
+        "content": full_content
     }
     
     result = service.posts().insert(
@@ -120,8 +158,12 @@ def main():
     for i, item in enumerate(news_items):
         try:
             print(f"포스팅 {i+1} 생성 중: {item['title']}")
-            title, content = generate_english_post(item)
-            url = post_to_blogger(title, content)
+            title, content, keyword = generate_english_post(item)
+            
+            print(f"이미지 검색 중: {keyword}")
+            image_url, photographer, photo_link = get_unsplash_image(keyword)
+            
+            url = post_to_blogger(title, content, image_url, photographer, photo_link)
             msg = f"✅ 포스팅 {i+1} 성공!\n제목: {title}\n주소: {url}"
             print(msg)
             send_telegram(msg)
