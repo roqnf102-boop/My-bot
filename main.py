@@ -7,10 +7,10 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
 RSS_FEEDS = [
-    "https://rss.naver.com/main/rss/v3/culture.xml",
-    "https://rss.naver.com/main/rss/v3/health.xml",
-    "https://rss.naver.com/main/rss/v3/travel.xml",
-    "https://rss.naver.com/main/rss/v3/food.xml",
+    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=105",
+    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=103",
+    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=102",
+    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=106",
 ]
 
 def send_telegram(message):
