@@ -7,10 +7,10 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
 RSS_FEEDS = [
-    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=105",
-    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=103",
-    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=102",
-    "https://rss.naver.com/main/rss/v1/news.xml?categoryId=106",
+    "https://news.google.com/rss/search?q=korean+food&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=korean+culture+kpop&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=korean+health+medicine&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=korea+travel+tourism&hl=en-US&gl=US&ceid=US:en",
 ]
 
 def send_telegram(message):
@@ -26,14 +26,16 @@ def get_news_items(max_items=2):
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:1]:
+            if feed.entries:
+                entry = feed.entries[0]
                 items.append({
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", entry.get("description", "")),
                     "link": entry.get("link", "")
                 })
-                if len(items) >= max_items:
-                    return items
+                print(f"뉴스 수집 성공: {entry.get('title', '')}")
+            if len(items) >= max_items:
+                return items
         except Exception as e:
             print(f"RSS 에러: {e}")
             continue
@@ -44,7 +46,7 @@ def generate_english_post(news_item):
     
     prompt = f"""You are a blogger writing for an English-speaking audience interested in Korean culture.
 
-Based on this Korean news:
+Based on this news:
 Title: {news_item['title']}
 Summary: {news_item['summary']}
 
