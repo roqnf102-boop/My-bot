@@ -6,12 +6,11 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
-# 네이버 뉴스 RSS 피드 (카테고리별)
 RSS_FEEDS = [
-    "https://feeds.feedburner.com/naverpost/food",  # 음식
-    "https://rss.naver.com/main/rss/v3/culture.xml",  # 문화
-    "https://rss.naver.com/main/rss/v3/health.xml",  # 건강
-    "https://rss.naver.com/main/rss/v3/travel.xml",  # 여행
+    "https://rss.naver.com/main/rss/v3/culture.xml",
+    "https://rss.naver.com/main/rss/v3/health.xml",
+    "https://rss.naver.com/main/rss/v3/travel.xml",
+    "https://rss.naver.com/main/rss/v3/food.xml",
 ]
 
 def send_telegram(message):
@@ -23,12 +22,11 @@ def send_telegram(message):
     requests.post(url, json={"chat_id": chat_id, "text": message})
 
 def get_news_items(max_items=2):
-    """RSS에서 뉴스 가져오기"""
     items = []
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:1]:  # 피드당 1개
+            for entry in feed.entries[:1]:
                 items.append({
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", entry.get("description", "")),
@@ -42,7 +40,6 @@ def get_news_items(max_items=2):
     return items
 
 def generate_english_post(news_item):
-    """Claude API로 영어 포스팅 생성"""
     client = anthropic.Anthropic(api_key=os.environ.get('CLAUDE_API_KEY'))
     
     prompt = f"""You are a blogger writing for an English-speaking audience interested in Korean culture.
@@ -70,8 +67,6 @@ CONTENT: [your blog post content here]
     )
     
     response = message.content[0].text
-    
-    # 제목과 내용 파싱
     title = news_item['title']
     content = response
     
@@ -83,7 +78,6 @@ CONTENT: [your blog post content here]
     return title, content
 
 def post_to_blogger(title, content):
-    """블로거에 포스팅"""
     creds = Credentials(
         token=None,
         refresh_token=os.environ.get('BLOGGER_REFRESH_TOKEN'),
