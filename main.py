@@ -7,10 +7,12 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 
 RSS_FEEDS = [
-    "https://news.google.com/rss/search?q=korean+food&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=korean+culture+kpop&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=korean+health+medicine&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/search?q=korea+travel+tourism&hl=en-US&gl=US&ceid=US:en",
+    ("korean food restaurant", "🍜 Korean Food"),
+    ("k-beauty skincare korean cosmetics", "💄 K-Beauty"),
+    ("kpop korean culture hallyu", "🎵 K-Culture"),
+    ("korea travel tourism", "✈️ Korea Travel"),
+    ("korean health wellness", "💪 Korean Wellness"),
+    ("korean drama movie netflix", "📺 Korean Entertainment"),
 ]
 
 def send_telegram(message):
@@ -23,17 +25,21 @@ def send_telegram(message):
 
 def get_news_items(max_items=2):
     items = []
-    for feed_url in RSS_FEEDS:
+    import random
+    feeds = random.sample(RSS_FEEDS, min(max_items, len(RSS_FEEDS)))
+    for query, category in feeds:
         try:
-            feed = feedparser.parse(feed_url)
+            url = f"https://news.google.com/rss/search?q={query.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en"
+            feed = feedparser.parse(url)
             if feed.entries:
                 entry = feed.entries[0]
                 items.append({
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", entry.get("description", "")),
-                    "link": entry.get("link", "")
+                    "link": entry.get("link", ""),
+                    "category": category
                 })
-                print(f"뉴스 수집 성공: {entry.get('title', '')}")
+                print(f"뉴스 수집 성공 [{category}]: {entry.get('title', '')}")
             if len(items) >= max_items:
                 return items
         except Exception as e:
@@ -41,55 +47,58 @@ def get_news_items(max_items=2):
             continue
     return items
 
-def get_unsplash_image(keyword):
+def get_pexels_image(keyword):
     try:
-        access_key = os.environ.get('UNSPLASH_ACCESS_KEY')
-        url = "https://api.unsplash.com/search/photos"
-        params = {
-            "query": keyword,
-            "per_page": 1,
-            "orientation": "landscape"
-        }
-        headers = {"Authorization": f"Client-ID {access_key}"}
-        response = requests.get(url, params=params, headers=headers)
+        api_key = os.environ.get('PEXELS_API_KEY')
+        url = "https://api.pexels.com/v1/search"
+        headers = {"Authorization": api_key}
+        params = {"query": keyword, "per_page": 1, "orientation": "landscape"}
+        response = requests.get(url, headers=headers, params=params)
         data = response.json()
-        print(f"Unsplash 응답: {data}")
-        if "results" in data and len(data["results"]) > 0:
-            photo = data["results"][0]
-            image_url = photo["urls"]["regular"]
-            photographer = photo["user"]["name"]
-            photo_link = photo["links"]["html"]
+        if data.get("photos"):
+            photo = data["photos"][0]
+            image_url = photo["src"]["large"]
+            photographer = photo["photographer"]
+            photo_link = photo["url"]
             return image_url, photographer, photo_link
     except Exception as e:
-        print(f"Unsplash 에러: {e}")
+        print(f"Pexels 에러: {e}")
     return None, None, None
 
 def generate_english_post(news_item):
     api_key = os.environ.get('CLAUDE_API_KEY')
     client = anthropic.Anthropic(api_key=api_key)
     
-    prompt = f"""You are a blogger writing for an English-speaking audience interested in Korean culture.
+    prompt = f"""You are a top Korean lifestyle blogger writing for an international English-speaking audience. 
+You write like a passionate expert who loves Korean culture, food, beauty, and travel.
+Your writing style is engaging, personal, and informative - like a knowledgeable friend sharing insider tips.
 
-Based on this news:
+Category: {news_item['category']}
+
+Based on this news/topic:
 Title: {news_item['title']}
 Summary: {news_item['summary']}
 
-Write an engaging English blog post that:
-- Has an attractive title for English readers
-- Is 300-400 words
-- Explains Korean context for Western readers
-- Is friendly and informative
-- Ends with why this matters to international readers
+Write a creative, engaging English blog post that:
+- Has a catchy, SEO-friendly title that would appeal to Western readers
+- Is 400-500 words
+- Includes personal insights and Korean cultural context
+- Has 2-3 subheadings to break up the content
+- Includes practical tips or recommendations where relevant
+- Uses a warm, enthusiastic tone like a passionate blogger
+- Ends with an engaging question or call-to-action for readers
 
-Format your response as:
-TITLE: [your title here]
-CONTENT: [your blog post content here]
-KEYWORD: [one English keyword for finding a relevant photo, e.g. "korean food" or "kpop" or "korea travel"]
+DO NOT just summarize the news. Use it as inspiration to write an original, creative blog post.
+
+Format your response EXACTLY as:
+TITLE: [your catchy title]
+KEYWORD: [one English keyword for photo search like "korean food" or "kpop" or "korea beauty"]
+CONTENT: [your full blog post with subheadings using <h2> tags]
 """
     
     message = client.messages.create(
         model="claude-opus-4-5",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}]
     )
     
@@ -100,14 +109,14 @@ KEYWORD: [one English keyword for finding a relevant photo, e.g. "korean food" o
     
     if "TITLE:" in response:
         title = response.split("TITLE:")[1].split("\n")[0].strip()
-    if "CONTENT:" in response:
-        content = response.split("CONTENT:")[1].split("KEYWORD:")[0].strip()
     if "KEYWORD:" in response:
-        keyword = response.split("KEYWORD:")[1].strip().split("\n")[0].strip()
+        keyword = response.split("KEYWORD:")[1].split("\n")[0].strip()
+    if "CONTENT:" in response:
+        content = response.split("CONTENT:")[1].strip()
     
     return title, content, keyword
 
-def post_to_blogger(title, content, image_url=None, photographer=None, photo_link=None):
+def post_to_blogger(title, content, category, image_url=None, photographer=None, photo_link=None):
     creds = Credentials(
         token=None,
         refresh_token=os.environ.get('BLOGGER_REFRESH_TOKEN'),
@@ -123,13 +132,15 @@ def post_to_blogger(title, content, image_url=None, photographer=None, photo_lin
     image_html = ""
     if image_url:
         image_html = f'''
-<div style="text-align:center; margin-bottom:20px;">
-    <img src="{image_url}" style="max-width:100%; border-radius:8px;" />
-    <p style="font-size:12px; color:#888;">Photo by <a href="{photo_link}" target="_blank">{photographer}</a> on <a href="https://unsplash.com" target="_blank">Unsplash</a></p>
+<div style="text-align:center; margin-bottom:24px;">
+    <img src="{image_url}" style="max-width:100%; border-radius:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+    <p style="font-size:11px; color:#999; margin-top:6px;">Photo by <a href="{photo_link}" target="_blank">{photographer}</a> on <a href="https://www.pexels.com" target="_blank">Pexels</a></p>
 </div>
 '''
     
-    full_content = image_html + f"<p>{content.replace(chr(10), '</p><p>')}</p>"
+    category_badge = f'<div style="display:inline-block; background:#ff6b6b; color:white; padding:4px 12px; border-radius:20px; font-size:13px; margin-bottom:16px;">{category}</div>'
+    
+    full_content = category_badge + image_html + content
     
     body = {
         "title": title,
@@ -160,10 +171,14 @@ def main():
             title, content, keyword = generate_english_post(item)
             
             print(f"이미지 검색 중: {keyword}")
-            image_url, photographer, photo_link = get_unsplash_image(keyword)
+            image_url, photographer, photo_link = get_pexels_image(keyword)
+            if image_url:
+                print(f"이미지 찾음: {image_url}")
+            else:
+                print("이미지 없음, 텍스트만 포스팅")
             
-            url = post_to_blogger(title, content, image_url, photographer, photo_link)
-            msg = f"✅ 포스팅 {i+1} 성공!\n제목: {title}\n주소: {url}"
+            url = post_to_blogger(title, content, item['category'], image_url, photographer, photo_link)
+            msg = f"✅ 포스팅 {i+1} 성공!\n카테고리: {item['category']}\n제목: {title}\n주소: {url}"
             print(msg)
             send_telegram(msg)
             success_count += 1
