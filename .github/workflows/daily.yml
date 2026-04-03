@@ -3,7 +3,7 @@ name: Auto Blog Post
 on:
   workflow_dispatch:
   schedule:
-    - cron: '55 23 * * *'  # UTC 23:55 = KST 08:55 (딜레이 감안)
+    - cron: '55 23 * * *'
 
 jobs:
   build:
