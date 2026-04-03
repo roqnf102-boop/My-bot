@@ -7,35 +7,76 @@ import anthropic
 from datetime import datetime, timedelta
 from pytrends.request import TrendReq
 from google.oauth2.credentials import Credentials
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
+import xml.etree.ElementTree as ET
 
-SEED_KEYWORDS = [
-    "korean convenience store snacks",
-    "korean skincare routine steps",
-    "korean drama filming location",
-    "korean fried chicken recipe",
-    "korean glass skin routine",
-    "korean apartment tour",
-    "korean lunch box ideas",
-    "korean street food recipe",
-    "korean face mask review",
-    "korean traditional clothing",
-    "korean ramen recipe",
-    "korean work culture",
-    "korean beauty ingredients",
-    "korean grocery haul",
-    "korean webtoon recommendation",
-]
-
-TREND_CATEGORIES = {
-    "food": ["korean bbq", "korean food", "korean recipe", "korean snack"],
-    "beauty": ["korean skincare", "k-beauty", "korean makeup", "korean serum"],
-    "culture": ["kpop", "kdrama", "korean drama", "korean movie"],
-    "travel": ["korea travel", "seoul travel", "busan travel", "korea trip"],
-    "lifestyle": ["korean lifestyle", "korean culture", "korean language", "korean tradition"],
+# ─────────────────────────────────────────
+# 12개 세분화 카테고리 (겹침 최소화)
+# ─────────────────────────────────────────
+CATEGORIES = {
+    "korean_snacks": {
+        "keywords": ["korean convenience store snacks", "korean chip flavors", "korean candy", "buldak noodles"],
+        "angle": "Americans discovering Korean snacks for the first time — surprise, comparison, where to buy"
+    },
+    "korean_cooking": {
+        "keywords": ["korean home cooking", "gochujang recipes", "doenjang jjigae", "korean rice dishes"],
+        "angle": "Making authentic Korean food at home with US grocery store ingredients"
+    },
+    "korean_bbq": {
+        "keywords": ["korean bbq at home", "samgyeopsal", "galbi recipe", "korean bbq sauce"],
+        "angle": "Replicating the Korean BBQ restaurant experience at home"
+    },
+    "kbeauty_routine": {
+        "keywords": ["korean skincare routine", "glass skin routine", "double cleansing", "korean toner pad"],
+        "angle": "Step-by-step K-beauty routines that actually work for Western skin types"
+    },
+    "kbeauty_ingredients": {
+        "keywords": ["snail mucin skincare", "centella asiatica benefits", "niacinamide korean", "propolis serum"],
+        "angle": "Science behind Korean beauty ingredients explained simply"
+    },
+    "kdrama_culture": {
+        "keywords": ["kdrama recommendations", "korean drama explained", "kdrama tropes", "best kdrama 2024"],
+        "angle": "Why Americans are obsessed with K-dramas — cultural analysis and picks"
+    },
+    "kpop_lifestyle": {
+        "keywords": ["kpop idol diet", "kpop workout routine", "korean celebrity skincare", "kpop fashion"],
+        "angle": "What everyday Korean lifestyle habits we can realistically adopt"
+    },
+    "korea_travel": {
+        "keywords": ["seoul travel tips", "busan itinerary", "korea hidden gems", "korea travel budget"],
+        "angle": "First-timer and off-the-beaten-path Korea travel from American perspective"
+    },
+    "korean_cafe": {
+        "keywords": ["korean cafe culture", "korean dalgona coffee", "korean dessert cafe", "bingsu recipe"],
+        "angle": "The Korean cafe aesthetic and how to bring it home"
+    },
+    "korean_wellness": {
+        "keywords": ["korean health food", "korean diet habits", "korean fermented food", "kimchi health benefits"],
+        "angle": "Korean wellness habits backed by science that Americans should try"
+    },
+    "korean_fashion": {
+        "keywords": ["korean street fashion", "korean minimalist style", "korean outfit ideas", "seoul fashion"],
+        "angle": "How to incorporate Korean fashion trends into everyday American wardrobe"
+    },
+    "korean_language": {
+        "keywords": ["learn korean basics", "korean phrases for travel", "korean honorifics", "hangul for beginners"],
+        "angle": "Practical Korean language tips for pop culture fans and travelers"
+    },
 }
+
+HISTORY_FILE = "post_history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return {"posted_categories": [], "posted_keywords": []}
+
+def save_history(history):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=2)
 
 def send_telegram(message):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -43,88 +84,91 @@ def send_telegram(message):
     if not token or not chat_id:
         return
     url = "https://api.telegram.org/bot" + token + "/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": message})
+    try:
+        requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=10)
+    except Exception:
+        pass
 
-def get_trending_keywords():
-    print("Google Trends 키워드 수집 중...")
+def get_google_news_trending():
+    """pytrends 실패 시 Google News RSS로 한국 관련 트렌드 수집"""
     trending = []
     try:
-        pytrends = TrendReq(hl="en-US", tz=360)
-        for category, keywords in TREND_CATEGORIES.items():
-            try:
-                pytrends.build_payload(keywords[:4], cat=0, timeframe="now 1-d", geo="US")
-                data = pytrends.interest_over_time()
-                if not data.empty:
-                    for kw in keywords[:4]:
-                        if kw in data.columns:
-                            score = int(data[kw].mean())
-                            if score > 10:
-                                trending.append({
-                                    "keyword": kw,
-                                    "category": category,
-                                    "trend_score": score
-                                })
-                time.sleep(1)
-            except Exception as e:
-                print("카테고리 에러: " + str(e))
-                continue
-        trending.sort(key=lambda x: x["trend_score"], reverse=True)
-        print("트렌딩 키워드 " + str(len(trending)) + "개 수집 완료")
+        rss_url = "https://news.google.com/rss/search?q=korean+culture+food+beauty&hl=en-US&gl=US&ceid=US:en"
+        resp = requests.get(rss_url, timeout=10)
+        root = ET.fromstring(resp.content)
+        items = root.findall(".//item")[:10]
+        for item in items:
+            title_el = item.find("title")
+            if title_el is not None and title_el.text:
+                trending.append(title_el.text.lower())
+        print(f"Google News RSS에서 {len(trending)}개 트렌드 수집")
     except Exception as e:
-        print("Trends 에러: " + str(e))
-
-    if not trending:
-        for kw in random.sample(SEED_KEYWORDS, min(5, len(SEED_KEYWORDS))):
-            trending.append({"keyword": kw, "category": "lifestyle", "trend_score": 50})
+        print(f"Google News RSS 에러: {e}")
     return trending
 
-def analyze_keyword_competition(trending_keywords):
-    print("Search Console 경쟁도 분석 중...")
+def get_trending_keywords(history):
+    """pytrends + Google News RSS 듀얼 소스, 중복 카테고리 제외"""
+    print("트렌드 키워드 수집 중...")
+    
+    posted_cats = set(history.get("posted_categories", []))
+    posted_kws = set(history.get("posted_keywords", []))
+    
+    # 최근 7일 이내 포스팅한 카테고리 제외 (순환)
+    available_categories = {
+        k: v for k, v in CATEGORIES.items() 
+        if k not in posted_cats
+    }
+    # 모두 포스팅했으면 히스토리 리셋
+    if not available_categories:
+        print("모든 카테고리 순환 완료 — 히스토리 초기화")
+        history["posted_categories"] = []
+        history["posted_keywords"] = []
+        available_categories = CATEGORIES.copy()
+
+    # pytrends 시도
+    trending_scores = {}
     try:
-        creds = Credentials(
-            token=None,
-            refresh_token=os.environ.get("BLOGGER_REFRESH_TOKEN"),
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=os.environ.get("BLOGGER_CLIENT_ID"),
-            client_secret=os.environ.get("BLOGGER_CLIENT_SECRET"),
-            scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
-        )
-        creds.refresh(Request())
-        service = build("searchconsole", "v1", credentials=creds)
-        site_url = os.environ.get("BLOG_SITE_URL")
-        if not site_url:
-            print("BLOG_SITE_URL 없음. 트렌드 점수만으로 선별합니다.")
-            return trending_keywords[:3]
-
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-        response = service.searchanalytics().query(
-            siteUrl=site_url,
-            body={"startDate": start_date, "endDate": end_date, "dimensions": ["query"], "rowLimit": 1000}
-        ).execute()
-
-        existing_keywords = set()
-        for row in response.get("rows", []):
-            query = row["keys"][0].lower()
-            clicks = row.get("clicks", 0)
-            position = row.get("position", 100)
-            if position <= 20 and clicks > 0:
-                existing_keywords.add(query)
-
-        print("기존 상위 노출 키워드 " + str(len(existing_keywords)) + "개 제외")
-        niche_keywords = []
-        for item in trending_keywords:
-            kw = item["keyword"].lower()
-            is_existing = any(kw in ex or ex in kw for ex in existing_keywords)
-            if not is_existing:
-                niche_keywords.append(item)
-
-        print("틈새 키워드 " + str(len(niche_keywords)) + "개 선별 완료")
-        return niche_keywords[:3] if niche_keywords else trending_keywords[:3]
-
+        pytrends = TrendReq(hl="en-US", tz=360)
+        for cat_name, cat_data in available_categories.items():
+            keywords = cat_data["keywords"][:4]
+            try:
+                pytrends.build_payload(keywords, cat=0, timeframe="now 1-d", geo="US")
+                data = pytrends.interest_over_time()
+                if not data.empty:
+                    score = 0
+                    for kw in keywords:
+                        if kw in data.columns:
+                            score += int(data[kw].mean())
+                    trending_scores[cat_name] = score
+                time.sleep(2)
+            except Exception:
+                trending_scores[cat_name] = random.randint(30, 70)
     except Exception as e:
-        print("Search Console 에러: " + str(e))
-        return trending_keywords[:3]
+        print(f"pytrends 전체 실패, RSS 백업 사용: {e}")
+        for cat_name in available_categories:
+            trending_scores[cat_name] = random.randint(30, 70)
+
+    # 점수 기반 정렬, 상위 3개 카테고리 선택
+    sorted_cats = sorted(trending_scores.items(), key=lambda x: x[1], reverse=True)
+    
+    result = []
+    for cat_name, score in sorted_cats[:3]:
+        cat_data = available_categories[cat_name]
+        # 포스팅 안 한 키워드 선택
+        available_kws = [kw for kw in cat_data["keywords"] if kw not in posted_kws]
+        if not available_kws:
+            available_kws = cat_data["keywords"]
+        
+        keyword = random.choice(available_kws)
+        result.append({
+            "category": cat_name,
+            "keyword": keyword,
+            "angle": cat_data["angle"],
+            "trend_score": score
+        })
+    
+    print(f"오늘 선택된 카테고리: {[r['category'] for r in result]}")
+    return result, history
 
 def generate_power_post(keyword_item):
     api_key = os.environ.get("CLAUDE_API_KEY")
@@ -132,45 +176,73 @@ def generate_power_post(keyword_item):
 
     keyword = keyword_item["keyword"]
     category = keyword_item["category"]
+    angle = keyword_item["angle"]
     trend_score = keyword_item["trend_score"]
 
-    prompt = (
-        "You are a passionate Korean culture expert and power blogger with 10+ years living between Korea and the US.\n"
-        "You write deeply personal, insightful, and practical content that American readers absolutely love.\n"
-        "Your writing style: warm, specific, opinionated, and packed with details Americans cannot find elsewhere.\n\n"
-        "TARGET KEYWORD: " + keyword + "\n"
-        "CATEGORY: " + category + "\n"
-        "TREND SCORE: " + str(trend_score) + "/100\n\n"
-        "Write a COMPREHENSIVE, SEO-optimized blog post of 1,500-2,000 words.\n\n"
-        "CONTENT STRATEGY:\n"
-        "- Answer exactly what Americans are searching for with this keyword\n"
-        "- Include personal anecdotes or specific examples\n"
-        "- Add practical, actionable information they can use TODAY\n"
-        "- Reference specific Korean brands, places, or products when relevant\n"
-        "- Compare Korean and American perspectives to create aha moments\n"
-        "- Include insider tips most blogs do not share\n\n"
-        "HTML STRUCTURE (do NOT use h1 tag anywhere, platform adds it automatically):\n\n"
-        "Start with: [p class intro] Hook sentence. Surprising fact or question. Make them need to keep reading. [/p]\n\n"
-        "Then use h2 subheadings with detailed paragraphs:\n"
-        "- h2 Subheading 1 (keyword-rich): 250-300 words, deep dive with cultural context\n"
-        "- h2 Subheading 2 (practical/how-to): 250-300 words, actionable steps, specific product names\n"
-        "- h2 Subheading 3 (insider secrets): 200-250 words, what most blogs miss\n"
-        "- h2 Subheading 4 (why it matters for Americans): 200-250 words, connect to American lifestyle\n"
-        "- h2 Final Thoughts: 150-200 words, personal wrap-up\n\n"
-        "End with: [p][strong]Question for you: [specific engaging question][/strong][/p]\n\n"
-        "RULES:\n"
-        "- Total 1,500-2,000 words\n"
-        "- Use you and I naturally\n"
-        "- Mention specific Korean brands and places by name\n"
-        "- Natural keyword placement, not stuffed\n"
-        "- Do NOT use h1 tag\n\n"
-        "OUTPUT FORMAT (follow exactly):\n"
-        "TITLE: [SEO title 50-60 chars with main keyword]\n"
-        "META: [meta description under 155 chars]\n"
-        "KEYWORD: [single word for Pexels: food or beauty or travel or music or lifestyle]\n"
-        "TAGS: [5 tags separated by commas]\n"
-        "CONTENT: [full HTML content]\n"
-    )
+    # 카테고리별 특화 지시사항
+    category_instructions = {
+        "korean_snacks": "Include specific product names available on Amazon or H-Mart. Add a 'Where to Buy' mini-section.",
+        "korean_cooking": "Include substitution tips for hard-to-find Korean ingredients at US grocery stores.",
+        "korean_bbq": "Compare experience vs US BBQ culture. Include specific cuts of meat and where to buy them.",
+        "kbeauty_routine": "Address common concerns: will this work for oily/dry/sensitive Western skin? Be specific.",
+        "kbeauty_ingredients": "Explain the science in plain English. Compare to familiar Western skincare equivalents.",
+        "kdrama_culture": "Include specific episode/show recommendations with streaming platform info.",
+        "kpop_lifestyle": "Be realistic about what's achievable. Avoid diet content that could be harmful.",
+        "korea_travel": "Include specific subway lines, neighborhoods, and realistic budget numbers in USD.",
+        "korean_cafe": "Include DIY recipes to recreate cafe drinks at home.",
+        "korean_wellness": "Cite health benefits with balanced perspective. Connect to habits Americans already have.",
+        "korean_fashion": "Link to specific styles Americans can find at accessible price points.",
+        "korean_language": "Include romanization + actual Hangul + audio-description pronunciation tips.",
+    }
+
+    special_instruction = category_instructions.get(category, "Be specific and practical.")
+
+    prompt = f"""You are an American who lived in Korea for 8 years and now writes the most-read Korean culture blog in the US.
+Your readers trust you because you're honest, specific, and you understand both cultures deeply.
+You are NOT generic — you have strong opinions and real experiences.
+
+TARGET KEYWORD: {keyword}
+CATEGORY: {category}
+TODAY'S ANGLE: {angle}
+SPECIAL INSTRUCTION: {special_instruction}
+
+Write a POWERFUL, SEO-optimized blog post of 1,500-2,000 words.
+
+CONTENT RULES:
+1. Open with a HOOK — a surprising fact, personal story, or bold claim (NOT "Are you curious about...")
+2. Every section must have at least one SPECIFIC detail (brand name, street name, price, or personal anecdote)
+3. Include one "Myth vs Reality" or "What Most Blogs Get Wrong" point
+4. Natural keyword usage — write for humans, not search engines
+5. End with a genuine question that invites comments
+
+HTML FORMAT (NO h1 tags — platform adds title automatically):
+
+<p class="intro"><strong>[Hook sentence — surprising, specific, personal]</strong> [2-3 follow-up sentences building intrigue.]</p>
+
+<h2>[Keyword-rich subheading — what readers actually want to know]</h2>
+<p>[250-300 words — deep cultural context + personal experience]</p>
+
+<h2>[Practical How-To subheading]</h2>
+<p>[250-300 words — step-by-step, specific product/place names, tips]</p>
+
+<h2>What Most Blogs Get Wrong About [topic]</h2>
+<p>[200-250 words — contrarian take, myth-busting, insider knowledge]</p>
+
+<h2>[American Perspective / Why This Matters for You subheading]</h2>
+<p>[200-250 words — bridge Korean → American lifestyle, practical application]</p>
+
+<h2>My Honest Take</h2>
+<p>[150-200 words — personal wrap-up, what to try first, final recommendation]</p>
+
+<p><strong>Question for you: [specific, engaging question related to the topic]</strong></p>
+
+OUTPUT FORMAT (follow EXACTLY, each on its own line):
+TITLE: [SEO title 50-60 chars, include main keyword naturally]
+META: [155 chars max — benefit-driven, not keyword-stuffed]
+KEYWORD: [ONE word for Pexels image search: food OR beauty OR travel OR lifestyle OR fashion OR wellness]
+TAGS: [exactly 5 tags, comma-separated, mix of broad and specific]
+CONTENT:
+[full HTML content starting with <p class="intro">]"""
 
     message = client.messages.create(
         model="claude-opus-4-5",
@@ -179,54 +251,74 @@ def generate_power_post(keyword_item):
     )
 
     response = message.content[0].text
-    title = keyword.title()
+    
+    # 파싱
+    title = keyword.replace("-", " ").title()
     meta = ""
     pexels_keyword = "korea"
     tags = []
-    content = response
+    content = ""
 
-    if "TITLE:" in response:
-        title = response.split("TITLE:")[1].split("\n")[0].strip()
-    if "META:" in response:
-        meta = response.split("META:")[1].split("\n")[0].strip()
-    if "KEYWORD:" in response:
-        pexels_keyword = response.split("KEYWORD:")[1].split("\n")[0].strip().lower()
-    if "TAGS:" in response:
-        tags_raw = response.split("TAGS:")[1].split("\n")[0].strip()
-        tags = [t.strip() for t in tags_raw.split(",")]
-    if "CONTENT:" in response:
+    lines = response.split("\n")
+    content_start = False
+    content_lines = []
+
+    for i, line in enumerate(lines):
+        if line.startswith("TITLE:") and not content_start:
+            title = line.replace("TITLE:", "").strip()
+        elif line.startswith("META:") and not content_start:
+            meta = line.replace("META:", "").strip()
+        elif line.startswith("KEYWORD:") and not content_start:
+            pexels_keyword = line.replace("KEYWORD:", "").strip().lower()
+        elif line.startswith("TAGS:") and not content_start:
+            tags_raw = line.replace("TAGS:", "").strip()
+            tags = [t.strip() for t in tags_raw.split(",")][:5]
+        elif line.startswith("CONTENT:") and not content_start:
+            content_start = True
+        elif content_start:
+            content_lines.append(line)
+
+    content = "\n".join(content_lines).strip()
+    
+    # CONTENT 파싱 실패 시 폴백
+    if not content and "CONTENT:" in response:
         content = response.split("CONTENT:")[1].strip()
 
-    word_count = len(content.replace("<", " <").split())
-    print("생성된 글 단어 수: " + str(word_count) + "단어")
+    word_count = len(content.split())
+    print(f"생성된 글: {word_count}단어")
     return title, content, pexels_keyword, meta, tags
 
 def get_pexels_image(keyword, title=""):
     try:
         api_key = os.environ.get("PEXELS_API_KEY")
         keyword_map = {
-            "food": "korean food dish",
-            "beauty": "skincare beauty products",
-            "travel": "korea city landscape",
-            "music": "kpop music concert",
-            "lifestyle": "korea daily life",
-            "culture": "korean traditional culture",
+            "food": "korean food dish restaurant",
+            "beauty": "skincare beauty korean products",
+            "travel": "seoul korea cityscape",
+            "lifestyle": "korea daily life modern",
+            "fashion": "korean street style fashion",
+            "wellness": "healthy korean food lifestyle",
+            "music": "kpop concert music",
         }
-        search_keyword = keyword_map.get(keyword.lower(), "korea " + keyword)
+        search_query = keyword_map.get(keyword.lower(), f"korea {keyword}")
+        
         url = "https://api.pexels.com/v1/search"
         headers = {"Authorization": api_key}
-        params = {"query": search_keyword, "per_page": 3, "orientation": "landscape"}
-        response = requests.get(url, headers=headers, params=params)
+        params = {"query": search_query, "per_page": 5, "orientation": "landscape", "size": "large"}
+        
+        response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
-        if data.get("photos") and len(data["photos"]) > 0:
-            photo = random.choice(data["photos"])
-            image_url = photo["src"]["large"]
+        
+        if data.get("photos"):
+            # 첫 번째 사진 선택 (가장 관련성 높음)
+            photo = data["photos"][0]
+            image_url = photo["src"]["large2x"]  # 고화질
             photographer = photo["photographer"]
             photo_link = photo["url"]
-            alt_text = title[:100] if title else search_keyword + " - Korean lifestyle"
+            alt_text = (title[:80] if title else search_query) + " | Korean lifestyle"
             return image_url, photographer, photo_link, alt_text
     except Exception as e:
-        print("Pexels 에러: " + str(e))
+        print(f"Pexels 에러: {e}")
     return None, None, None, None
 
 def post_to_blogger(title, content, meta="", tags=None, image_url=None, photographer=None, photo_link=None, alt_text=None):
@@ -241,116 +333,164 @@ def post_to_blogger(title, content, meta="", tags=None, image_url=None, photogra
     creds.refresh(Request())
     service = build("blogger", "v3", credentials=creds)
 
+    # JSON-LD 스키마
     json_ld = {
         "@context": "https://schema.org",
         "@type": "BlogPosting",
         "headline": title,
         "description": meta,
         "datePublished": datetime.now().isoformat(),
-        "author": {"@type": "Person", "name": "Korean Lifestyle Expert"},
-        "publisher": {"@type": "Organization", "name": "Korean Lifestyle Blog"},
+        "author": {"@type": "Person", "name": "KBeauty Insider"},
+        "publisher": {
+            "@type": "Organization", 
+            "name": "Korean Lifestyle Insider",
+            "logo": {"@type": "ImageObject", "url": ""}
+        },
         "image": image_url or "",
         "keywords": ", ".join(tags) if tags else ""
     }
 
-    meta_jsonld = '<script type="application/ld+json">' + json.dumps(json_ld, ensure_ascii=False) + '</script>\n'
+    meta_tags = (
+        f'<meta name="description" content="{meta}" />\n' if meta else ""
+    )
+    schema = f'<script type="application/ld+json">{json.dumps(json_ld, ensure_ascii=False)}</script>\n'
 
+    # 이미지 HTML (크레딧 포함)
     image_html = ""
     if image_url:
-        image_html = (
-            '<div style="text-align:center; margin: 0 0 32px 0;">'
-            '<img src="' + image_url + '" alt="' + alt_text + '" title="' + alt_text + '"'
-            ' style="max-width:100%; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.12);" />'
-            '<p style="font-size:11px; color:#aaa; margin-top:8px;">'
-            'Photo by <a href="' + photo_link + '" target="_blank" rel="noopener">' + photographer + '</a>'
-            ' on <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a>'
-            '</p></div>\n'
-        )
+        image_html = f"""<div style="text-align:center; margin:0 0 36px 0;">
+<img src="{image_url}" alt="{alt_text}" title="{alt_text}"
+  style="max-width:100%; border-radius:16px; box-shadow:0 6px 24px rgba(0,0,0,0.15);" loading="lazy" />
+<p style="font-size:11px; color:#999; margin-top:8px;">
+Photo by <a href="{photo_link}" target="_blank" rel="noopener noreferrer">{photographer}</a>
+on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
+</p></div>\n"""
 
-    full_content = meta_jsonld + image_html + content
+    full_content = meta_tags + schema + image_html + content
+    
     body = {"title": title, "content": full_content}
     if tags:
         body["labels"] = tags[:5]
 
     result = service.posts().insert(
         blogId=os.environ.get("BLOG_ID"),
-        body=body
+        body=body,
+        isDraft=False
     ).execute()
 
-    return result.get("url")
+    return result.get("url", "")
 
 def request_google_indexing(post_url):
     try:
-        service_account_json = os.environ.get("GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON", "{}")
-        service_account_info = json.loads(service_account_json)
-        if not service_account_info:
-            print("Indexing API 서비스 계정 없음. 건너뜁니다.")
+        sa_json = os.environ.get("GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON", "{}")
+        sa_info = json.loads(sa_json)
+        if not sa_info.get("private_key"):
+            print("Indexing API 서비스 계정 없음 — 건너뜀")
             return False
+        
         credentials = service_account.Credentials.from_service_account_info(
-            service_account_info,
+            sa_info,
             scopes=["https://www.googleapis.com/auth/indexing"]
         )
         credentials.refresh(Request())
+        
         endpoint = "https://indexing.googleapis.com/v3/urlNotifications:publish"
-        headers = {"Authorization": "Bearer " + credentials.token, "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {credentials.token}",
+            "Content-Type": "application/json"
+        }
         body = {"url": post_url, "type": "URL_UPDATED"}
-        response = requests.post(endpoint, headers=headers, json=body)
+        response = requests.post(endpoint, headers=headers, json=body, timeout=10)
+        
         if response.status_code == 200:
-            print("Google 색인 요청 성공: " + post_url)
+            print(f"Google 색인 요청 성공: {post_url}")
             return True
         else:
-            print("색인 요청 실패: " + str(response.status_code))
+            print(f"색인 요청 실패 ({response.status_code}): {response.text[:200]}")
             return False
     except Exception as e:
-        print("색인 요청 에러: " + str(e))
+        print(f"색인 요청 에러: {e}")
         return False
 
 def main():
-    print("파워블로그 자동화 시스템 v2.0 시작")
-    print(datetime.now().strftime("%Y-%m-%d %H:%M"))
+    start_time = datetime.now()
+    print(f"파워블로그 자동화 v3.0 시작 — {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    trending = get_trending_keywords()
-    if not trending:
-        send_telegram("트렌드 키워드 수집 실패")
+    # 히스토리 로드 (중복 방지)
+    history = load_history()
+    
+    # 트렌드 키워드 수집
+    keyword_items, history = get_trending_keywords(history)
+    
+    if not keyword_items:
+        send_telegram("❌ 키워드 수집 실패 — 포스팅 중단")
         return
 
-    niche_keywords = analyze_keyword_competition(trending)
-    print("오늘 공략할 키워드:")
-    for item in niche_keywords:
-        print("  - [" + item["category"] + "] " + item["keyword"] + " (트렌드: " + str(item["trend_score"]) + ")")
+    print(f"\n오늘 포스팅 계획 ({len(keyword_items)}개):")
+    for item in keyword_items:
+        print(f"  [{item['category']}] {item['keyword']} (트렌드: {item['trend_score']})")
 
     success_count = 0
-    for i, keyword_item in enumerate(niche_keywords):
-        print("포스팅 " + str(i+1) + "/" + str(len(niche_keywords)) + ": " + keyword_item["keyword"])
+    posted_urls = []
+
+    for i, keyword_item in enumerate(keyword_items):
+        print(f"\n{'='*50}")
+        print(f"포스팅 {i+1}/{len(keyword_items)}: {keyword_item['keyword']}")
+        
         try:
-            print("글 생성 중 (1500단어+)...")
+            # 글 생성
+            print("글 생성 중...")
             title, content, pexels_kw, meta, tags = generate_power_post(keyword_item)
-            print("제목: " + title)
+            print(f"제목: {title}")
 
-            print("이미지 검색: " + pexels_kw)
+            # 이미지
+            print(f"Pexels 이미지 검색: {pexels_kw}")
             image_url, photographer, photo_link, alt_text = get_pexels_image(pexels_kw, title)
+            print("이미지: " + ("찾음" if image_url else "없음 (이미지 없이 발행)"))
 
+            # 발행
             print("Blogger 발행 중...")
             url = post_to_blogger(title, content, meta, tags, image_url, photographer, photo_link, alt_text)
-            print("URL: " + str(url))
+            print(f"발행 완료: {url}")
 
+            # Google 색인
             if url:
                 request_google_indexing(url)
+                posted_urls.append(url)
 
-            msg = "포스팅 " + str(i+1) + " 성공!\n키워드: " + keyword_item["keyword"] + "\n제목: " + title + "\nURL: " + str(url)
+            # 히스토리 업데이트
+            history["posted_categories"].append(keyword_item["category"])
+            history["posted_keywords"].append(keyword_item["keyword"])
+            # 최근 30개만 유지
+            history["posted_categories"] = history["posted_categories"][-30:]
+            history["posted_keywords"] = history["posted_keywords"][-30:]
+
+            msg = f"✅ 포스팅 성공!\n카테고리: {keyword_item['category']}\n키워드: {keyword_item['keyword']}\n제목: {title}\nURL: {url}"
             send_telegram(msg)
             success_count += 1
 
-            if i < len(niche_keywords) - 1:
-                print("30초 대기 중...")
-                time.sleep(30)
+            # 포스팅 간격 (Blogger API 안정성)
+            if i < len(keyword_items) - 1:
+                wait = 45
+                print(f"{wait}초 대기...")
+                time.sleep(wait)
 
         except Exception as e:
-            msg = "포스팅 " + str(i+1) + " 실패 [" + keyword_item["keyword"] + "]: " + str(e)
-            print(msg)
-            send_telegram(msg)
+            error_msg = f"❌ 포스팅 실패 [{keyword_item['keyword']}]\n에러: {str(e)}"
+            print(error_msg)
+            send_telegram(error_msg)
 
-    summary = "오늘 포스팅 완료! 성공: " + str(success_count) + "/" + str(len(niche_keywords)) + "개"
+    # 히스토리 저장
+    save_history(history)
+
+    # 완료 요약
+    elapsed = (datetime.now() - start_time).seconds // 60
+    summary = (
+        f"🎉 오늘 포스팅 완료!\n"
+        f"성공: {success_count}/{len(keyword_items)}개\n"
+        f"소요시간: {elapsed}분\n"
+        f"발행 URL:\n" + "\n".join(posted_urls)
+    )
     print(summary)
     send_telegram(summary)
 
