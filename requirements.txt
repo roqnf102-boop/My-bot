@@ -4,4 +4,5 @@ feedparser
 pytrends
 google-auth
 google-auth-httplib2
+google-auth-oauthlib
 google-api-python-client
