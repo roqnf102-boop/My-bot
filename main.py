@@ -12,9 +12,6 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 
-# ─────────────────────────────────────────
-# 12개 세분화 카테고리 (롱테일 키워드)
-# ─────────────────────────────────────────
 CATEGORIES = {
     "korean_snacks": {
         "keywords": [
@@ -128,9 +125,6 @@ CATEGORIES = {
 
 HISTORY_FILE = "post_history.json"
 
-# ─────────────────────────────────────────
-# 히스토리
-# ─────────────────────────────────────────
 def load_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r") as f:
@@ -141,9 +135,6 @@ def save_history(history):
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=2)
 
-# ─────────────────────────────────────────
-# 텔레그램
-# ─────────────────────────────────────────
 def send_telegram(message):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
@@ -158,9 +149,6 @@ def send_telegram(message):
     except Exception:
         pass
 
-# ─────────────────────────────────────────
-# Google News RSS 백업
-# ─────────────────────────────────────────
 def get_google_news_trending():
     trending = []
     try:
@@ -173,9 +161,6 @@ def get_google_news_trending():
         print(f"Google News RSS 에러: {e}")
     return trending
 
-# ─────────────────────────────────────────
-# 트렌드 키워드 수집
-# ─────────────────────────────────────────
 def get_trending_keywords(history):
     print("트렌드 키워드 수집 중...")
 
@@ -231,9 +216,6 @@ def get_trending_keywords(history):
     print(f"선택된 카테고리: {[r['category'] for r in result]}")
     return result, history
 
-# ─────────────────────────────────────────
-# 글 생성 (E-E-A-T + 롱테일 SEO 최적화)
-# ─────────────────────────────────────────
 def generate_power_post(keyword_item):
     api_key = os.environ.get("CLAUDE_API_KEY")
     client = anthropic.Anthropic(api_key=api_key)
@@ -340,7 +322,7 @@ CONTENT:
 [HTML starting with <p class="intro">]"""
 
     message = client.messages.create(
-        model="claude-opus-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -379,9 +361,6 @@ CONTENT:
     print(f"생성된 글: {len(content.split())}단어")
     return title, content, pexels_keyword, meta, tags
 
-# ─────────────────────────────────────────
-# Pexels 이미지
-# ─────────────────────────────────────────
 def get_pexels_image(keyword, title=""):
     try:
         api_key = os.environ.get("PEXELS_API_KEY")
@@ -411,9 +390,6 @@ def get_pexels_image(keyword, title=""):
         print(f"Pexels 에러: {e}")
     return None, None, None, None
 
-# ─────────────────────────────────────────
-# Blogger 발행
-# ─────────────────────────────────────────
 def post_to_blogger(title, content, meta="", tags=None, image_url=None, photographer=None, photo_link=None, alt_text=None):
     creds = Credentials(
         token=None,
@@ -466,9 +442,6 @@ def post_to_blogger(title, content, meta="", tags=None, image_url=None, photogra
 
     return result.get("url", "")
 
-# ─────────────────────────────────────────
-# Google 색인 요청
-# ─────────────────────────────────────────
 def request_google_indexing(post_url):
     try:
         sa_json = os.environ.get("GOOGLE_INDEXING_SERVICE_ACCOUNT_JSON", "{}")
@@ -503,9 +476,6 @@ def request_google_indexing(post_url):
         print(f"색인 요청 에러: {e}")
         return False
 
-# ─────────────────────────────────────────
-# 메인
-# ─────────────────────────────────────────
 def main():
     start_time = datetime.now()
     print(f"파워블로그 자동화 v3.0 시작 — {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
