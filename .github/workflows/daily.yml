@@ -2,8 +2,8 @@ name: Auto Blog Post
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: '55 23 * * *'
+  schedule:
+    - cron: '55 23 * * *'
 
 jobs:
   build:
