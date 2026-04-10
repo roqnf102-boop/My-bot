@@ -274,50 +274,31 @@ CRITICAL SEO RULES:
 
 CONTENT MUST INCLUDE:
 1. HOOK — first sentence must have a number OR surprising fact OR personal fail story
-   Example: "I wasted $200 on Korean skincare before I learned this one thing."
-   Example: "73% of Americans mispronounce gochujang — and Korean chefs notice."
-
 2. PERSONAL STORY — one paragraph of real-sounding specific experience
-   (specific location, year, Korean person's name, exact price in Korean won + USD)
-
 3. MYTH BUSTING — "What influencers / other blogs / Americans get wrong about [topic]"
-
-4. SPECIFIC DETAILS — every claim needs one of:
-   - Brand name (Olive Young, Innisfree, CJ, etc.)
-   - Price (₩3,500 / about $2.70)
-   - Location (Myeongdong, Gangnam, H-Mart aisle 4)
-   - Statistic or study reference
-
-5. COMPARISON — Korean vs American version of the same thing
-
+4. SPECIFIC DETAILS — brand names, prices, locations
+5. COMPARISON — Korean vs American version
 6. ACTIONABLE ENDING — exact first step reader can take TODAY
 
-HTML STRUCTURE (NO h1 — platform adds it):
-
-<p class="intro"><strong>[Number or shocking fact hook.]</strong> [Personal connection. Why you specifically are writing this.]</p>
-
-<h2>[Longtail keyword phrased as question or statement]</h2>
-<p>[250-300 words: personal story + cultural context + specific details]</p>
-
+HTML STRUCTURE (NO h1):
+<p class="intro"><strong>[Hook]</strong> [Personal connection.]</p>
+<h2>[Longtail keyword as question]</h2>
+<p>[250-300 words]</p>
 <h2>[Main keyword + practical angle]</h2>
-<p>[250-300 words: step-by-step with brand names, prices, where to buy in US]</p>
-
+<p>[250-300 words]</p>
 <h2>What [Influencers/Blogs/Americans] Get Wrong About [topic]</h2>
-<p>[200-250 words: myth bust, insider truth, specific example of wrong advice]</p>
-
+<p>[200-250 words]</p>
 <h2>The Korean Way vs The American Way</h2>
-<p>[200-250 words: direct comparison, cultural insight, which is better and why]</p>
-
+<p>[200-250 words]</p>
 <h2>Your First Step (Do This Tonight)</h2>
-<p>[150-200 words: ONE specific action, where to get it, exact cost, what to expect]</p>
+<p>[150-200 words]</p>
+<p><strong>Have you tried [specific thing]? Tell me in the comments.</strong></p>
 
-<p><strong>Have you tried [specific thing]? Tell me in the comments — especially if [specific scenario].</strong></p>
-
-OUTPUT FORMAT — follow EXACTLY:
-TITLE: [question or number format, 50-60 chars, include main keyword]
-META: [benefit + keyword + curiosity gap, under 155 chars]
+OUTPUT FORMAT:
+TITLE: [50-60 chars, include main keyword]
+META: [under 155 chars]
 KEYWORD: [ONE: food OR beauty OR travel OR lifestyle OR fashion OR wellness]
-TAGS: [5 tags: 2 broad + 2 specific + 1 longtail phrase]
+TAGS: [5 tags comma-separated]
 CONTENT:
 [HTML starting with <p class="intro">]"""
 
@@ -397,7 +378,8 @@ def post_to_blogger(title, content, meta="", tags=None, image_url=None, photogra
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("BLOGGER_CLIENT_ID"),
         client_secret=os.environ.get("BLOGGER_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/blogger"],
+        scopes=["https://www.googleapis.com/auth/blogger",
+                "https://www.googleapis.com/auth/blogger.readonly"],
     )
     creds.refresh(Request())
     service = build("blogger", "v3", credentials=creds)
