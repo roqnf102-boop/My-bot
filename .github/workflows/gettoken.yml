@@ -14,17 +14,13 @@ jobs:
       - run: pip install google-auth-oauthlib
 
       - name: Generate Auth URL
-        env:
-          CLIENT_ID: ${{ secrets.BLOGGER_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.BLOGGER_CLIENT_SECRET }}
         run: |
           python3 - << 'EOF'
-          import os
           from google_auth_oauthlib.flow import InstalledAppFlow
           flow = InstalledAppFlow.from_client_config(
               {"installed": {
-                  "client_id": os.environ["CLIENT_ID"],
-                  "client_secret": os.environ["CLIENT_SECRET"],
+                  "client_id": "768605131817-9korh2vncbkiva5621rltqomdihfl426.apps.googleusercontent.com",
+                  "client_secret": "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",
                   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                   "token_uri": "https://oauth2.googleapis.com/token",
                   "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"]
