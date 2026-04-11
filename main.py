@@ -7,6 +7,8 @@ import requests
 from datetime import datetime
 from pytrends.request import TrendReq
 import anthropic
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
 
 # ── 환경변수 ──────────────────────────────────────────
 CLAUDE_API_KEY       = os.environ["CLAUDE_API_KEY"]
@@ -38,7 +40,7 @@ BLOG_LABELS = ["Korean Culture", "K-Beauty", "Korean Food",
 def get_trending_keywords():
     """pytrends로 미국 내 한국 관련 인기 키워드 추출"""
     try:
-        pt = TrendReq(hl="en-US", tz=360, timeout=(10, 25), retries=2, backoff_factor=0.5)
+        pt = TrendReq(hl="en-US", tz=360, timeout=(10, 25))
         seed = random.sample(SEED_KEYWORDS, min(5, len(SEED_KEYWORDS)))
         pt.build_payload(seed, cat=0, timeframe="now 7-d", geo="US")
         related = pt.related_queries()
@@ -218,20 +220,17 @@ def build_featured_image_html(image: dict, keyword: str) -> str:
 # 5. BLOGGER OAuth TOKEN
 # ══════════════════════════════════════════════════════
 def get_access_token() -> str:
-    r = requests.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "client_id":     BLOGGER_CLIENT_ID,
-            "client_secret": BLOGGER_CLIENT_SECRET,
-            "refresh_token": BLOGGER_REFRESH_TOKEN,
-            "grant_type":    "refresh_token",
-        },
-        timeout=10,
+    creds = Credentials(
+        token=None,
+        refresh_token=BLOGGER_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=BLOGGER_CLIENT_ID,
+        client_secret=BLOGGER_CLIENT_SECRET,
+        scopes=["https://www.googleapis.com/auth/blogger"],
     )
-    r.raise_for_status()
-    token = r.json()["access_token"]
-    print("[OAUTH] Access token obtained")
-    return token
+    creds.refresh(GoogleRequest())
+    print("[OAUTH] Access token obtained via google-auth")
+    return creds.token
 
 
 # ══════════════════════════════════════════════════════
