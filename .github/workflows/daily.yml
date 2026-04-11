@@ -22,32 +22,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Debug OAuth test
-        env:
-          BLOGGER_CLIENT_ID:     ${{ secrets.BLOGGER_CLIENT_ID }}
-          BLOGGER_CLIENT_SECRET: ${{ secrets.BLOGGER_CLIENT_SECRET }}
-          BLOGGER_REFRESH_TOKEN: ${{ secrets.BLOGGER_REFRESH_TOKEN }}
-        run: |
-          python3 - <<'EOF'
-          import os, requests
-          cid = os.environ["BLOGGER_CLIENT_ID"]
-          sec = os.environ["BLOGGER_CLIENT_SECRET"]
-          tok = os.environ["BLOGGER_REFRESH_TOKEN"]
-          print("CLIENT_ID 길이:", len(cid))
-          print("CLIENT_SECRET 길이:", len(sec))
-          print("REFRESH_TOKEN 길이:", len(tok))
-          print("TOKEN 앞10자:", tok[:10])
-          print("TOKEN 뒤10자:", tok[-10:])
-          r = requests.post("https://oauth2.googleapis.com/token", data={
-              "client_id": cid,
-              "client_secret": sec,
-              "refresh_token": tok,
-              "grant_type": "refresh_token",
-          })
-          print("STATUS:", r.status_code)
-          print("RESPONSE:", r.json())
-          EOF
-
       - name: Run publisher
         env:
           CLAUDE_API_KEY:        ${{ secrets.CLAUDE_API_KEY }}
