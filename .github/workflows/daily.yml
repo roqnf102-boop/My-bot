@@ -2,8 +2,8 @@ name: Korean Blog Auto-Publisher
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 매일 UTC 00:00 (한국 09:00)
-  workflow_dispatch:        # 수동 실행 버튼
+    - cron: "0 0 * * *"
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -22,16 +22,34 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Debug OAuth test
+        env:
+          BLOGGER_CLIENT_ID:     ${{ secrets.BLOGGER_CLIENT_ID }}
+          BLOGGER_CLIENT_SECRET: ${{ secrets.BLOGGER_CLIENT_SECRET }}
+          BLOGGER_REFRESH_TOKEN: ${{ secrets.BLOGGER_REFRESH_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import os, requests
+          r = requests.post("https://oauth2.googleapis.com/token", data={
+              "client_id":     os.environ["BLOGGER_CLIENT_ID"],
+              "client_secret": os.environ["BLOGGER_CLIENT_SECRET"],
+              "refresh_token": os.environ["BLOGGER_REFRESH_TOKEN"],
+              "grant_type":    "refresh_token",
+          })
+          print("STATUS:", r.status_code)
+          print("RESPONSE:", r.json())
+          EOF
+
       - name: Run publisher
         env:
-          CLAUDE_API_KEY:          ${{ secrets.CLAUDE_API_KEY }}
-          BLOGGER_CLIENT_ID:       ${{ secrets.BLOGGER_CLIENT_ID }}
-          BLOGGER_CLIENT_SECRET:   ${{ secrets.BLOGGER_CLIENT_SECRET }}
-          BLOGGER_REFRESH_TOKEN:   ${{ secrets.BLOGGER_REFRESH_TOKEN }}
-          BLOG_ID:                 ${{ secrets.BLOG_ID }}
-          PEXELS_API_KEY:          ${{ secrets.PEXELS_API_KEY }}
-          TELEGRAM_BOT_TOKEN:      ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:        ${{ secrets.TELEGRAM_CHAT_ID }}
-          BLOG_SITE_URL:           ${{ secrets.BLOG_SITE_URL }}
-          SEARCH_CONSOLE_KEY:      ${{ secrets.SEARCH_CONSOLE_KEY }}
+          CLAUDE_API_KEY:        ${{ secrets.CLAUDE_API_KEY }}
+          BLOGGER_CLIENT_ID:     ${{ secrets.BLOGGER_CLIENT_ID }}
+          BLOGGER_CLIENT_SECRET: ${{ secrets.BLOGGER_CLIENT_SECRET }}
+          BLOGGER_REFRESH_TOKEN: ${{ secrets.BLOGGER_REFRESH_TOKEN }}
+          BLOG_ID:               ${{ secrets.BLOG_ID }}
+          PEXELS_API_KEY:        ${{ secrets.PEXELS_API_KEY }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          BLOG_SITE_URL:         ${{ secrets.BLOG_SITE_URL }}
+          SEARCH_CONSOLE_KEY:    ${{ secrets.SEARCH_CONSOLE_KEY }}
         run: python main.py
